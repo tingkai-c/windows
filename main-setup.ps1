@@ -1,22 +1,135 @@
-# 1. Load the "Database" of apps
-$config = Get-Content ".\apps.json" | ConvertFrom-Json
+#!/usr/bin/env pwsh
+#Requires -RunAsAdministrator
+# Main Setup Orchestrator
+# Coordinates bloatware removal and application installation
 
-# 2. Iterate through the apps
-foreach ($app in $config.apps) {
-    Write-Host "Installing $($app.name)..." -ForegroundColor Cyan
-    
-    # Check if we need to use a local config file (like for Git)
-    $params = $app.parameters
-    if ($params -match "LOADINF") {
-        # Point to the local file in the /configs folder
-        $localInf = Join-Path (Get-Location) "configs\git_setup.inf"
-        $params = $params -replace "LOCAL_PATH_HOLDER", $localInf
-    }
+param(
+    [switch]$SkipBloatwareRemoval,
+    [switch]$AppsOnly,
+    [string]$SingleApp = ""  # Install only one app (for testing)
+)
 
-    $command = "winget install --id $($app.id) --exact --accept-package-agreements --accept-source-agreements $params"
-    Invoke-Expression $command
+# Setup
+$ErrorActionPreference = "Continue"  # Don't stop on errors
+$RepoRoot = $PSScriptRoot
+
+# Import utilities
+Import-Module "$RepoRoot\lib\Install-Utils.psm1" -Force
+
+# Initialize results tracking
+$Results = @{
+    StartTime = Get-Date
+    BloatwareRemoval = $null
+    Apps = @()
 }
 
-# 3. Post-Installation: Copy VS Code Settings
-$vcodeSettings = "$env:APPDATA\Code\User\settings.json"
-Copy-Item ".\configs\vscode-settings.json" -Destination $vcodeSettings -Force
+Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "  Windows Setup Automation" -ForegroundColor Cyan
+Write-Host "========================================`n" -ForegroundColor Cyan
+
+# Phase 1: Bloatware Removal
+if (-not $SkipBloatwareRemoval -and -not $AppsOnly) {
+    Write-InstallLog "Phase 1: Removing bloatware" -Level "INFO"
+
+    $bloatScript = Join-Path $RepoRoot "cleanup\remove-bloat.ps1"
+    if (Test-Path $bloatScript) {
+        try {
+            & $bloatScript
+            $Results.BloatwareRemoval = "Success"
+        }
+        catch {
+            Write-InstallLog "Bloatware removal failed: $_" -Level "ERROR"
+            $Results.BloatwareRemoval = "Failed"
+        }
+    }
+    else {
+        Write-InstallLog "Bloatware removal script not found, skipping" -Level "WARNING"
+    }
+
+    Write-Host "`n"
+}
+
+# Phase 2: Application Installation
+Write-InstallLog "Phase 2: Installing applications" -Level "INFO"
+
+$appsDir = Join-Path $RepoRoot "apps"
+
+# Get all app folders
+if ($SingleApp) {
+    $appFolders = @(Get-ChildItem -Path $appsDir -Directory | Where-Object Name -eq $SingleApp)
+    if ($appFolders.Count -eq 0) {
+        Write-InstallLog "App '$SingleApp' not found in apps directory" -Level "ERROR"
+    }
+}
+else {
+    $appFolders = Get-ChildItem -Path $appsDir -Directory | Sort-Object Name
+}
+
+if ($appFolders.Count -eq 0) {
+    Write-InstallLog "No applications found to install" -Level "WARNING"
+}
+
+# Install each app
+foreach ($appFolder in $appFolders) {
+    $installScript = Join-Path $appFolder.FullName "install.ps1"
+
+    if (-not (Test-Path $installScript)) {
+        Write-InstallLog "Skipping $($appFolder.Name): no install.ps1 found" -Level "WARNING"
+        $Results.Apps += @{Name = $appFolder.Name; Status = "Skipped"; Message = "No install script"}
+        continue
+    }
+
+    Write-Host "`n--- Installing: $($appFolder.Name) ---" -ForegroundColor Cyan
+
+    try {
+        # Execute in app's directory context
+        Push-Location $appFolder.FullName
+        & $installScript
+        $exitCode = $LASTEXITCODE
+        Pop-Location
+
+        if ($exitCode -eq 0) {
+            $Results.Apps += @{Name = $appFolder.Name; Status = "Success"; Message = "Installed"}
+        }
+        else {
+            $Results.Apps += @{Name = $appFolder.Name; Status = "Failed"; Message = "Exit code: $exitCode"}
+        }
+    }
+    catch {
+        Pop-Location
+        Write-InstallLog "Error installing $($appFolder.Name): $_" -Level "ERROR"
+        $Results.Apps += @{Name = $appFolder.Name; Status = "Failed"; Message = $_.Exception.Message}
+    }
+}
+
+# Summary Report
+Write-Host "`n========================================" -ForegroundColor Cyan
+Write-Host "  Installation Summary" -ForegroundColor Cyan
+Write-Host "========================================`n" -ForegroundColor Cyan
+
+if ($Results.BloatwareRemoval) {
+    $bloatColor = if ($Results.BloatwareRemoval -eq "Success") { "Green" } else { "Yellow" }
+    Write-Host "Bloatware Removal: $($Results.BloatwareRemoval)" -ForegroundColor $bloatColor
+}
+
+$successful = ($Results.Apps | Where-Object Status -eq "Success").Count
+$failed = ($Results.Apps | Where-Object Status -eq "Failed").Count
+$skipped = ($Results.Apps | Where-Object Status -eq "Skipped").Count
+
+Write-Host "`nApplications:" -ForegroundColor White
+Write-Host "  Successful: $successful" -ForegroundColor Green
+Write-Host "  Failed: $failed" -ForegroundColor $(if ($failed -gt 0) { "Red" } else { "Gray" })
+Write-Host "  Skipped: $skipped" -ForegroundColor Yellow
+
+if ($failed -gt 0) {
+    Write-Host "`nFailed installations:" -ForegroundColor Red
+    $Results.Apps | Where-Object Status -eq "Failed" | ForEach-Object {
+        Write-Host "  - $($_.Name): $($_.Message)" -ForegroundColor Red
+    }
+}
+
+$duration = (Get-Date) - $Results.StartTime
+Write-Host "`nTotal time: $($duration.ToString('mm\:ss'))" -ForegroundColor Gray
+
+Write-Host "`nLog file: $RepoRoot\install.log" -ForegroundColor Gray
+Write-Host "`n========================================`n" -ForegroundColor Cyan
