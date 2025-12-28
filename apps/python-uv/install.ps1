@@ -33,6 +33,50 @@ try {
     # Refresh environment variables to pick up uv in PATH
     $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 
+    # Disable Windows App Execution Aliases that redirect python to Microsoft Store
+    Write-InstallLog "Disabling Windows App Execution Aliases for Python..." -Level "INFO"
+    try {
+        $registryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\AppExecutionAliases"
+        $aliasNames = @("python.exe", "python3.exe")
+
+        # Check if registry path exists
+        if (Test-Path $registryPath) {
+            foreach ($aliasName in $aliasNames) {
+                try {
+                    # Check if the alias exists
+                    $existingValue = Get-ItemProperty -Path $registryPath -Name $aliasName -ErrorAction SilentlyContinue
+
+                    if ($null -eq $existingValue) {
+                        Write-InstallLog "Alias '$aliasName' not found in registry (may already be removed)" -Level "INFO"
+                        continue
+                    }
+
+                    $currentValue = $existingValue.$aliasName
+
+                    # Check if already disabled (value = 0)
+                    if ($currentValue -eq 0) {
+                        Write-InstallLog "Alias '$aliasName' is already disabled" -Level "INFO"
+                        continue
+                    }
+
+                    # Disable the alias by setting to 0
+                    Set-ItemProperty -Path $registryPath -Name $aliasName -Value 0 -Type DWord -ErrorAction Stop
+                    Write-InstallLog "Disabled App Execution Alias: $aliasName" -Level "SUCCESS"
+                }
+                catch {
+                    Write-InstallLog "Warning: Could not disable alias '$aliasName': $_" -Level "WARNING"
+                }
+            }
+        }
+        else {
+            Write-InstallLog "App Execution Aliases registry key not found (may not exist on this Windows version)" -Level "WARNING"
+        }
+    }
+    catch {
+        Write-InstallLog "Warning: Failed to disable App Execution Aliases: $_" -Level "WARNING"
+        Write-InstallLog "You can manually disable them in: Settings > Apps > App execution aliases" -Level "INFO"
+    }
+
     # Check if uv is now available
     $uvCmd = Get-Command uv -ErrorAction SilentlyContinue
     if (-not $uvCmd) {

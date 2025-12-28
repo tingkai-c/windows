@@ -81,6 +81,18 @@ uvx --with pandas --with numpy ipython
 
 ## Troubleshooting
 
+### Python command redirects to Microsoft Store
+
+This issue is automatically fixed by the installation script, which disables the Windows App Execution Aliases for `python.exe` and `python3.exe`.
+
+If you still encounter this issue, you can manually disable the aliases:
+
+1. Open **Settings** > **Apps** > **Apps & Features**
+2. Click **App execution aliases** (or search for "App execution aliases")
+3. Disable both **python.exe** and **python3.exe**
+
+**Technical Details**: Windows 10/11 includes App Execution Aliases that redirect certain commands to the Microsoft Store. The installation script disables these by modifying registry values at `HKCU:\Software\Microsoft\Windows\CurrentVersion\AppExecutionAliases`.
+
 ### Commands not found after installation
 Restart your terminal or PowerShell session to refresh PATH.
 
