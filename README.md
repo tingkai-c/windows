@@ -8,7 +8,7 @@ On a fresh Windows PC, open PowerShell as Administrator and run:
 
 ```powershell
 Set-ExecutionPolicy Bypass -Scope Process -Force;
-winget install --id Git.Git --exact --silent --accept-package-agreements --accept-source-agreements;
+winget install --id Git.Git --exact --source winget --accept-package-agreements --accept-source-agreements --override '/VERYSILENT /NORESTART /COMPONENTS="gitlfs,assoc,assoc_sh,autoupdate" /o:PathOption=CmdTools /o:CRLFOption=LFOnly /o:CURLOption=OpenSSL /o:DefaultBranchOption=main /o:PerformanceTweaksFSCache=Enabled';
 $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User");
 git clone https://github.com/tingkai-c/windows.git $env:USERPROFILE\setup-repo;
 cd $env:USERPROFILE\setup-repo;
