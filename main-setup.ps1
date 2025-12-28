@@ -49,6 +49,40 @@ if (-not $SkipBloatwareRemoval -and -not $AppsOnly) {
     Write-Host "`n"
 }
 
+# Phase 1.5: Ensure Chocolatey is Installed
+Write-InstallLog "Phase 1.5: Checking Chocolatey installation" -Level "INFO"
+
+try {
+    $chocoCmd = Get-Command choco -ErrorAction SilentlyContinue
+
+    if ($chocoCmd) {
+        Write-InstallLog "Chocolatey is already installed" -Level "SUCCESS"
+    }
+    else {
+        Write-InstallLog "Installing Chocolatey..." -Level "INFO"
+
+        # Download and execute Chocolatey installation script
+        Set-ExecutionPolicy Bypass -Scope Process -Force
+        [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072
+        Invoke-Expression ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))
+
+        # Verify installation
+        $chocoCmd = Get-Command choco -ErrorAction SilentlyContinue
+        if ($chocoCmd) {
+            Write-InstallLog "Chocolatey installed successfully" -Level "SUCCESS"
+        }
+        else {
+            Write-InstallLog "Chocolatey installation may have failed, continuing anyway..." -Level "WARNING"
+        }
+    }
+}
+catch {
+    Write-InstallLog "Error during Chocolatey installation: $_" -Level "WARNING"
+    Write-InstallLog "Some apps may fail to install without Chocolatey" -Level "WARNING"
+}
+
+Write-Host "`n"
+
 # Phase 2: Application Installation
 Write-InstallLog "Phase 2: Installing applications" -Level "INFO"
 
