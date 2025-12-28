@@ -13,7 +13,16 @@ Write-InstallLog "Starting installation of $AppName" -Level "INFO"
 
 # Installation
 try {
-    $result = Invoke-WingetInstall -Id $AppId -Name $AppName -SkipIfInstalled
+    # Configure installation options via MERGETASKS
+    # - !runcode: Don't auto-launch VSCode after installation
+    # - desktopicon: Create desktop shortcut
+    # - addcontextmenufiles: Add "Open with Code" to file context menu
+    # - addcontextmenufolders: Add "Open with Code" to folder context menu
+    # - associatewithfiles: Register Code as editor for supported file types
+    # - addtopath: Add VSCode to PATH environment variable
+    $overrideParams = "/SILENT /MERGETASKS=`"!runcode,desktopicon,addcontextmenufiles,addcontextmenufolders,associatewithfiles,addtopath`""
+
+    $result = Invoke-WingetInstall -Id $AppId -Name $AppName -SkipIfInstalled -Override $overrideParams
 
     if (-not $result.Success) {
         throw "Installation failed: $($result.Message)"
