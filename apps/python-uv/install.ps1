@@ -36,7 +36,7 @@ try {
     # Disable Windows App Execution Aliases that redirect python to Microsoft Store
     Write-InstallLog "Disabling Windows App Execution Aliases for Python..." -Level "INFO"
     try {
-        $registryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\AppExecutionAliases"
+        $registryPath = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Explorer\AppExecutionAliases"
         $aliasNames = @("python.exe", "python3.exe")
 
         # Check if registry path exists
