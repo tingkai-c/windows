@@ -99,6 +99,7 @@ function Invoke-WingetInstall {
         "install",
         "--id", $Id,
         "--exact",
+        "--source", "winget",
         "--accept-package-agreements",
         "--accept-source-agreements"
     )
