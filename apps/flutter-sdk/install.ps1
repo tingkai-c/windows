@@ -38,32 +38,17 @@ try {
         exit 0
     }
 
-    # Verify Chocolatey is available
-    $chocoCmd = Get-Command choco -ErrorAction SilentlyContinue
-    if (-not $chocoCmd) {
-        throw "Chocolatey is not installed. Please run main-setup.ps1 to install Chocolatey first."
-    }
-
     # Install Flutter using Chocolatey
     Write-InstallLog "Installing $AppName via Chocolatey..." -Level "INFO"
     Write-InstallLog "This may take several minutes..." -Level "INFO"
 
-    $args = @(
-        "install",
-        "flutter",
-        "-y",
-        "--accept-license"
-    )
+    $result = Invoke-ChocoInstall -PackageName "flutter" -Name $AppName -SkipIfInstalled
 
-    $process = Start-Process -FilePath "choco" -ArgumentList $args -Wait -PassThru -NoNewWindow
-    $exitCode = $process.ExitCode
+    if (-not $result.Success) {
+        throw "Installation failed: $($result.Message)"
+    }
 
-    if ($exitCode -eq 0) {
-        Write-InstallLog "$AppName installed successfully via Chocolatey" -Level "SUCCESS"
-    }
-    else {
-        throw "Chocolatey installation failed with exit code: $exitCode"
-    }
+    Write-InstallLog "$AppName installed successfully via Chocolatey" -Level "SUCCESS"
 }
 catch {
     Write-InstallLog "Failed to install $AppName : $_" -Level "ERROR"

@@ -6,23 +6,22 @@ $UtilsPath = Join-Path $PSScriptRoot "..\..\lib\Install-Utils.psm1"
 Import-Module $UtilsPath -Force
 
 # Configuration
-$AppId = "Microsoft.VisualStudioCode"
+$PackageName = "vscode.install"  # Use .install package for custom params
 $AppName = "Visual Studio Code"
 
 Write-InstallLog "Starting installation of $AppName" -Level "INFO"
 
 # Installation
 try {
-    # Configure installation options via MERGETASKS
-    # - !runcode: Don't auto-launch VSCode after installation
-    # - desktopicon: Create desktop shortcut
-    # - addcontextmenufiles: Add "Open with Code" to file context menu
-    # - addcontextmenufolders: Add "Open with Code" to folder context menu
-    # - associatewithfiles: Register Code as editor for supported file types
-    # - addtopath: Add VSCode to PATH environment variable
-    $overrideParams = "/SILENT /MERGETASKS=`"!runcode,desktopicon,addcontextmenufiles,addcontextmenufolders,associatewithfiles,addtopath`""
+    # Note: Chocolatey's vscode.install defaults already match our requirements:
+    # - Desktop icon: enabled
+    # - Context menu (files): enabled
+    # - Context menu (folders): enabled
+    # - File associations: enabled
+    # - Add to PATH: enabled
+    # - Don't auto-launch: enabled
 
-    $result = Invoke-WingetInstall -Id $AppId -Name $AppName -SkipIfInstalled -Override $overrideParams
+    $result = Invoke-ChocoInstall -PackageName $PackageName -Name $AppName -SkipIfInstalled
 
     if (-not $result.Success) {
         throw "Installation failed: $($result.Message)"
@@ -38,6 +37,9 @@ catch {
 # Post-installation configuration
 try {
     Write-InstallLog "Copying VS Code settings..." -Level "INFO"
+
+    # Refresh PATH environment variable to pick up newly installed VS Code
+    $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
 
     $settingsSource = Join-Path $PSScriptRoot "settings.json"
     $settingsDestination = "$env:APPDATA\Code\User\settings.json"
@@ -58,6 +60,34 @@ try {
 }
 catch {
     Write-InstallLog "Post-installation configuration failed: $_" -Level "WARNING"
+}
+
+# Post-installation validation
+try {
+    Write-InstallLog "Validating VS Code installation..." -Level "INFO"
+
+    $codeCmd = Get-Command code -ErrorAction SilentlyContinue
+    if ($codeCmd) {
+        Write-InstallLog "VS Code command is available in PATH: $($codeCmd.Source)" -Level "SUCCESS"
+
+        # Get VS Code version
+        try {
+            $versionOutput = & code --version 2>&1
+            if ($versionOutput) {
+                Write-InstallLog "VS Code version: $($versionOutput[0])" -Level "INFO"
+            }
+        }
+        catch {
+            Write-InstallLog "Could not retrieve VS Code version" -Level "WARNING"
+        }
+    }
+    else {
+        Write-InstallLog "Warning: VS Code command not found in PATH after installation" -Level "WARNING"
+        Write-InstallLog "You may need to restart your terminal or system" -Level "INFO"
+    }
+}
+catch {
+    Write-InstallLog "Post-installation validation failed: $_" -Level "WARNING"
 }
 
 exit 0

@@ -238,6 +238,128 @@ function Test-AppInstalled {
     }
 }
 
+function Invoke-ChocoInstall {
+    <#
+    .SYNOPSIS
+        Installs an application using Chocolatey with error handling
+
+    .PARAMETER PackageName
+        The Chocolatey package name (e.g., "vscode.install", "flutter")
+
+    .PARAMETER Name
+        Display name for logging
+
+    .PARAMETER PackageParams
+        Optional Chocolatey package parameters (e.g., "/NoDesktopIcon /DontAddToPath")
+
+    .PARAMETER InstallArgs
+        Optional installer arguments passed directly to the underlying installer
+
+    .PARAMETER SkipIfInstalled
+        Check if already installed and skip if so
+
+    .RETURNS
+        A hashtable with Success (bool) and Message (string)
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [string]$PackageName,
+
+        [Parameter(Mandatory=$true)]
+        [string]$Name,
+
+        [Parameter(Mandatory=$false)]
+        [string]$PackageParams = "",
+
+        [Parameter(Mandatory=$false)]
+        [string]$InstallArgs = "",
+
+        [Parameter(Mandatory=$false)]
+        [switch]$SkipIfInstalled
+    )
+
+    # Verify Chocolatey is available
+    $chocoCmd = Get-Command choco -ErrorAction SilentlyContinue
+    if (-not $chocoCmd) {
+        return @{
+            Success = $false
+            Message = "Chocolatey is not installed"
+        }
+    }
+
+    # Check if already installed
+    if ($SkipIfInstalled) {
+        try {
+            $output = choco list --local-only --exact $PackageName 2>&1
+            $outputString = $output | Out-String
+
+            # If the package name appears in the output, it's installed
+            if ($outputString -match [regex]::Escape($PackageName)) {
+                Write-InstallLog "$Name already installed, skipping" -Level "SUCCESS"
+                return @{
+                    Success = $true
+                    Message = "Already installed, skipping"
+                }
+            }
+        }
+        catch {
+            # If command fails, assume not installed and continue
+        }
+    }
+
+    # Build choco install command
+    $args = @(
+        "install",
+        $PackageName,
+        "-y",
+        "--accept-license"
+    )
+
+    if ($PackageParams) {
+        $args += "--package-parameters"
+        $args += $PackageParams
+    }
+
+    if ($InstallArgs) {
+        $args += "--install-arguments"
+        $args += $InstallArgs
+    }
+
+    # Execute installation
+    Write-InstallLog "Installing $Name via Chocolatey (Package: $PackageName)..." -Level "INFO"
+
+    try {
+        $process = Start-Process -FilePath "choco" -ArgumentList $args -Wait -PassThru -NoNewWindow
+        $exitCode = $process.ExitCode
+
+        # Interpret exit code
+        $result = Get-ChocoExitCode -ExitCode $exitCode
+
+        if ($result.IsSuccess) {
+            Write-InstallLog "$Name installed successfully" -Level "SUCCESS"
+            return @{
+                Success = $true
+                Message = $result.Message
+            }
+        }
+        else {
+            Write-InstallLog "$Name installation failed: $($result.Message)" -Level "ERROR"
+            return @{
+                Success = $false
+                Message = $result.Message
+            }
+        }
+    }
+    catch {
+        $errorMsg = $_.Exception.Message
+        Write-InstallLog "Error installing $Name : $errorMsg" -Level "ERROR"
+        return @{
+            Success = $false
+            Message = $errorMsg
+        }
+    }
+}
+
 function Get-WingetExitCode {
     <#
     .SYNOPSIS
@@ -284,11 +406,66 @@ function Get-WingetExitCode {
     }
 }
 
+function Get-ChocoExitCode {
+    <#
+    .SYNOPSIS
+        Interprets Chocolatey exit codes
+
+    .PARAMETER ExitCode
+        The exit code from Chocolatey
+
+    .RETURNS
+        Hashtable with IsSuccess (bool) and Message (string)
+    #>
+    param(
+        [Parameter(Mandatory=$true)]
+        [int]$ExitCode
+    )
+
+    switch ($ExitCode) {
+        0 {
+            return @{
+                IsSuccess = $true
+                Message = "Installation completed successfully"
+            }
+        }
+        -1 {
+            # Already installed
+            return @{
+                IsSuccess = $true
+                Message = "Already installed or no update needed"
+            }
+        }
+        1641 {
+            # Success, reboot initiated
+            return @{
+                IsSuccess = $true
+                Message = "Installation completed, reboot initiated"
+            }
+        }
+        3010 {
+            # Success, reboot required
+            return @{
+                IsSuccess = $true
+                Message = "Installation completed, reboot required"
+            }
+        }
+        default {
+            return @{
+                IsSuccess = $false
+                Message = "Installation failed with exit code: $ExitCode"
+            }
+        }
+    }
+}
+
 # Export functions
 Export-ModuleMember -Function @(
     'Write-InstallLog',
     'Invoke-WingetInstall',
+    'Invoke-ChocoInstall',
     'Copy-ConfigFile',
     'Test-AppInstalled',
-    'Get-WingetExitCode'
+    'Get-WingetExitCode',
+    'Get-ChocoExitCode'
 )
